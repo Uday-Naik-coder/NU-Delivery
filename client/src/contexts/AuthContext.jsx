@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
+// 🔥 Backend API URL from .env
+const API = import.meta.env.VITE_SERVER_URL;
+
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -10,31 +13,34 @@ export const AuthProvider = ({ children }) => {
   const [hasNewOrderOffers, setHasNewOrderOffers] = useState(false);
   const [hasNewDeliveries, setHasNewDeliveries] = useState(false);
 
-  // Check authentication status on mount
+  // 🔥 Check authentication on mount
   useEffect(() => {
     checkAuth();
   }, []);
 
   const checkAuth = async () => {
     try {
-      const response = await axios.get('/auth/me', { withCredentials: true });
+      const response = await axios.get(`${API}/auth/me`, {
+        withCredentials: true
+      });
       setUser(response.data);
     } catch (err) {
-      // User not authenticated
       setUser(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // 🔥 Redirect to Google OAuth (BACKEND, not frontend)
   const login = useCallback(() => {
-    // Redirect to Google OAuth
-    window.location.href = '/auth/google';
+    window.location.href = `${API}/auth/google`;
   }, []);
 
   const logout = useCallback(async () => {
     try {
-      await axios.get('/auth/logout', { withCredentials: true });
+      await axios.get(`${API}/auth/logout`, {
+        withCredentials: true
+      });
       setUser(null);
     } catch (err) {
       console.error('Logout error:', err);
@@ -43,8 +49,9 @@ export const AuthProvider = ({ children }) => {
 
   const updatePhone = useCallback(async (phone) => {
     try {
-      const response = await axios.post('/auth/update-phone', 
-        { phone }, 
+      const response = await axios.post(
+        `${API}/auth/update-phone`,
+        { phone },
         { withCredentials: true }
       );
       setUser(response.data.user);
@@ -100,6 +107,7 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// Hook
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
