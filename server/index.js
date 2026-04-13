@@ -8,99 +8,105 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
+// Load passport config
 require('./config/passport');
 
 const app = express();
 const httpServer = createServer(app);
 
-// ✅ IMPORTANT: Trust proxy (REQUIRED for Railway)
+// 🔥 REQUIRED for Railway / proxies (IMPORTANT)
 app.set('trust proxy', 1);
 
-// Socket.io setup with CORS
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"]
-  }
-});
-
-// Make io accessible to routes
-app.set('io', io);
+// 🔥 CORS (MUST match frontend exactly)
+app.use(cors({
+  origin: process.env.CLIENT_URL,
+  credentials: true
+}));
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ CORS configuration
-app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
-  credentials: true
-}));
-
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/nu-delivery')
+// 🔥 MongoDB Connection
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+  .catch(err => console.error('❌ MongoDB Error:', err));
 
-// ✅ FIXED Session configuration
+// 🔥 SESSION CONFIG (CRITICAL FOR AUTH)
 app.use(session({
-  name: 'connect.sid', // optional but explicit
-  secret: process.env.SESSION_SECRET || 'nu-delivery-secret-key',
+  name: 'connect.sid',
+  secret: process.env.SESSION_SECRET || 'super-secret',
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
-    mongoUrl: process.env.MONGO_URI || 'mongodb://localhost:27017/nu-delivery'
+    mongoUrl: process.env.MONGO_URI
   }),
   cookie: {
     maxAge: 2 * 60 * 60 * 1000, // 2 hours
-    secure: true,               // 🔥 MUST be true (HTTPS)
     httpOnly: true,
-    sameSite: 'none'            // 🔥 CRITICAL for Vercel ↔ Railway
+    secure: process.env.NODE_ENV === 'production', // 🔥 true in production
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // 🔥 IMPORTANT
   }
 }));
 
-// Passport middleware
+// 🔥 Passport Middleware
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Socket.io connection handling
+// 🔌 Socket.io setup (optional but included)
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL,
+    credentials: true
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log('🔌 New client connected:', socket.id);
+  console.log('🔌 Socket connected:', socket.id);
 
   socket.on('disconnect', () => {
-    console.log('🔌 Client disconnected:', socket.id);
+    console.log('🔌 Socket disconnected:', socket.id);
   });
 });
 
-// Routes
+// Make io accessible in routes if needed
+app.set('io', io);
+
+// 🔥 AUTH ROUTES
 app.use('/auth', require('./routes/auth'));
+
+// 🔥 TEST ROUTE (VERY IMPORTANT)
+app.get('/auth/me', (req, res) => {
+  console.log('SESSION:', req.session);
+  console.log('USER:', req.user);
+
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+
+  res.json(req.user);
+});
+
+// Optional API routes
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/user', require('./routes/user'));
 
-// ✅ Debug route (optional - helps verify login)
-app.get('/me', (req, res) => {
-  res.json(req.user || null);
-});
-
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ status: 'OK' });
 });
 
-// Error handling middleware
+// Error handler
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ 
-    message: 'Internal Server Error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  console.error('❌ Error:', err);
+  res.status(500).json({
+    message: 'Internal Server Error'
   });
 });
 
+// 🚀 Start server
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 Client URL: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
+  console.log(`🌍 Client URL: ${process.env.CLIENT_URL}`);
 });
-
-module.exports = { io };
